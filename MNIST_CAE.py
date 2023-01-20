@@ -457,24 +457,24 @@ def main():
     if not only_test:
         outT.close()
 
-# finalise training
+    # finalise training
     # save final state
     if not args.benchrun and not only_test:
         save_state(epoch, model, loss_acc, optimizer, res_name, True)
 
-# debug final results
+    # debug final results
     if not only_test:
         debug_final(logging, start_epoch, epoch, first_ep_t, last_ep_t, tot_ep_t)
 
-# start testing loop
+    # start testing loop
     test(model, device, test_loader, loss_function)
 
-# export first batch's latent space if needed (Turn to True)
+    # export first batch's latent space if selected
     if args.export_latent:
         encode = encoder().to(device)
         encode_exp(encode, device, train_loader)
 
-# clean-up
+    # print duration
     logging.info('final time: {:.2f}'.format(time.perf_counter()-st)+' s')
 
 if __name__ == "__main__":

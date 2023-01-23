@@ -6,7 +6,7 @@ authors: EI
 version: 230123a
 notes: bases on the CNN of MNIST example: https://github.com/pytorch/examples/blob/main/mnist/main.py
 training is done on a system with m1 chip from Apple
-help: ./pytorch_cae.py --help
+help: ./MNIST_CAE.py --help
 """
 
 # remove torchvision warnings on macos

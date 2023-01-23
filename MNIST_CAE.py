@@ -1,13 +1,15 @@
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 script to train a CAE model with MNIST dataset
 authors: EI
-version: 230120a
+version: 230123a
 notes: bases on the CNN of MNIST example: https://github.com/pytorch/examples/blob/main/mnist/main.py
 training is done on a system with m1 chip from Apple
+help: ./MNIST_CAE.py --help
 """
 
-# remove torchvision warnings on macos
+# remove torchvision warning on m1 mac
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -24,7 +26,7 @@ from torchvision import datasets, transforms
 # parsed settings
 def pars_ini():
     global args
-    parser = argparse.ArgumentParser(description='Train MNIST with CAE model to compress the dataset -- experimental')
+    parser = argparse.ArgumentParser(description='Train MNIST with CAE model for reconstructions')
 
     # I/O
     parser.add_argument('--data-dir', default='./',
@@ -128,23 +130,33 @@ class VAE(nn.Module):
         self.leaky_reLU = nn.LeakyReLU(0.2)
         self.relu = nn.ReLU()
 
+        # encode - compress w/ ratio 1:2
         self.conv1 = nn.Conv2d(1, 10, kernel_size=3, stride=1, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(10)
-        self.conv2 = nn.Conv2d(10, 20, kernel_size=3, stride=1, padding=1, bias=False)
+        self.conv2 = nn.Conv2d(10, 20, kernel_size=3, stride=2, padding=1, bias=False)
         self.bn2 = nn.BatchNorm2d(20)
+        self.conv3 = nn.Conv2d(20, 2, kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn3 = nn.BatchNorm2d(2)
 
-        self.conv3 = nn.Conv2d(20, 10, kernel_size=3, stride=1, padding=1, bias=False)
-        self.bn3 = nn.BatchNorm2d(10)
-        self.conv4 = nn.Conv2d(10, 1, kernel_size=3, stride=1, padding=1, bias=False)
+        # decode - decompress
+        self.conv4 = nn.Conv2d(2, 20, kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn4 = nn.BatchNorm2d(20)
+        self.conv5 = nn.Conv2d(20, 10, kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn5 = nn.BatchNorm2d(10)
+        self.conv6 = nn.Conv2d(10, 1, kernel_size=3, stride=1, padding=1, bias=False)
 
     def forward(self, x):
         # encoder
         conv1 = self.leaky_reLU(self.bn1(self.conv1(x)))
         conv2 = self.leaky_reLU(self.bn2(self.conv2(conv1)))
+        conv3 = self.leaky_reLU(self.bn3(self.conv3(conv2)))
 
         # decoder
-        conv3 = self.leaky_reLU(self.bn3(self.conv3(conv2)))
-        return self.conv4(conv3)
+        conv4 = self.bn4(self.conv4(conv3))
+        conv4 = nn.functional.interpolate(conv4, scale_factor=2, mode='bilinear', align_corners=True)
+        conv4 = self.leaky_reLU(conv4)
+        conv5 = self.leaky_reLU(self.bn5(self.conv5(conv4)))
+        return self.conv6(conv5)
 
 # compression part - export latent space
 class encoder(VAE):
@@ -153,7 +165,8 @@ class encoder(VAE):
     def forward(self, x):
         # only encoder part
         conv1 = self.leaky_reLU(self.bn1(self.conv1(x)))
-        return self.leaky_reLU(self.bn2(self.conv2(conv1)))
+        conv2 = self.leaky_reLU(self.bn2(self.conv2(conv1)))
+        return self.leaky_reLU(self.bn3(self.conv3(conv2)))
 
 # save state of the training
 def save_state(epoch,model,loss_acc,optimizer,res_name,is_best):
@@ -249,7 +262,7 @@ def train(model, device, train_loader, optimizer, epoch, loss_function, schedule
 
         if batch_idx % args.log_int == 0:
             print(f'Train epoch: {epoch} [{batch_idx * len(data):6d}/{len(train_loader.dataset)} '
-                f'({100.0 * batch_idx / len(train_loader):2.0f}%)]\t\tLoss: {loss.item():.6f}')
+                f'({100.0 * batch_idx / len(train_loader):2.0f}%)]\tLoss: {loss.item():.6f}')
         loss_acc+= loss.item()
 
         # profiler step per batch
@@ -291,7 +304,7 @@ def test(model, device, test_loader, loss_function):
     # test results
     logging.info('testing results:')
     logging.info('total testing time: {:.2f}'.format(time.perf_counter()-lt)+' s')
-    logging.info('test_loss: '+str(test_loss.numpy()))
+    logging.info('test loss: '+str(test_loss.numpy()))
 
     # plot comparison if needed
     if not args.skipplot and not args.testrun and not args.benchrun:
@@ -457,24 +470,25 @@ def main():
     if not only_test:
         outT.close()
 
-    # finalise training
+# finalise training
     # save final state
     if not args.benchrun and not only_test:
+        print('\nsaving final model!')
         save_state(epoch, model, loss_acc, optimizer, res_name, True)
 
-    # debug final results
+# debug final results
     if not only_test:
         debug_final(logging, start_epoch, epoch, first_ep_t, last_ep_t, tot_ep_t)
 
-    # start testing loop
+# start testing loop
     test(model, device, test_loader, loss_function)
 
-    # export first batch's latent space if selected
+# export first batch's latent space if needed (Turn to True)
     if args.export_latent:
         encode = encoder().to(device)
         encode_exp(encode, device, train_loader)
 
-    # print duration
+# clean-up
     logging.info('final time: {:.2f}'.format(time.perf_counter()-st)+' s')
 
 if __name__ == "__main__":

@@ -3,8 +3,10 @@
 """
 script to train a CAE model with MNIST dataset
 authors: EI
-version: 230123a
+version: 230125a
+prereq: python3.x w/ torch, torchvision, matplotlib, numpy, h5py
 notes: bases on the CNN of MNIST example: https://github.com/pytorch/examples/blob/main/mnist/main.py
+testing CAE for various extension to generative networks
 training is done on a system with m1 chip from Apple
 help: ./MNIST_CAE.py --help
 """
@@ -87,8 +89,6 @@ def debug_ini(timer):
     logging.basicConfig(format='%(levelname)s: %(message)s', stream=sys.stdout, level=logging.INFO)
     logging.info('configuration:')
     logging.info('--------------------------------------------------------')
-    logging.info('initialise in {:.2f}'.format(timer)+' s')
-    logging.info('local workers: '+str(args.nworker))
     logging.info('sys.version: '+str(sys.version))
     logging.info('parsers list:')
     list_args = [x for x in vars(args)]
@@ -245,7 +245,7 @@ def train(model, device, train_loader, optimizer, epoch, loss_function, schedule
         # profiler start
         prof.start()
 
-    loss_acc=0
+    loss_acc=0.0
     model.train()
     for batch_idx, (data, target) in enumerate(train_loader):
         do_backprop = ((batch_idx + 1) % args.accum_iter == 0) or (batch_idx + 1 == len(train_loader))
@@ -253,17 +253,20 @@ def train(model, device, train_loader, optimizer, epoch, loss_function, schedule
         with torch.set_grad_enabled(True):
             # forward pass
             output = model(data)
-            loss = loss_function(output, data)
+            loss = loss_function(output, data) / args.accum_iter
 
             # backward pass
             loss.backward()
-            optimizer.step()
-            optimizer.zero_grad()
+            if do_backprop:
+                optimizer.step()
+                optimizer.zero_grad()
+
+        loss_acc+= loss.item()
 
         if batch_idx % args.log_int == 0:
             print(f'Train epoch: {epoch} [{batch_idx * len(data):6d}/{len(train_loader.dataset)} '
-                f'({100.0 * batch_idx / len(train_loader):2.0f}%)]\tLoss: {loss.item():.6f}')
-        loss_acc+= loss.item()
+                  f'({100.0 * batch_idx / len(train_loader):2.0f}%)]\tloss: {loss_acc:.6f}',end='')
+            print(f' / bp: {do_backprop}') if not do_backprop else print(f'')
 
         # profiler step per batch
         if args.benchrun:
@@ -308,7 +311,7 @@ def test(model, device, test_loader, loss_function):
 
     # plot comparison if needed
     if not args.skipplot and not args.testrun and not args.benchrun:
-        plot_scatter(data[0,0,:,:].numpy(), output[0,0,:,:].numpy(), 'test')
+        plot_scatter(data[0,0,:,:].numpy(), output[0,0,:,:].numpy())
 
 # encode export
 def encode_exp(encode, device, train_loader):
@@ -326,7 +329,7 @@ def encode_exp(encode, device, train_loader):
         break
 
 # plot reconstruction
-def plot_scatter(inp_img, out_img, data_org):
+def plot_scatter(inp_img, out_img):
     fig = plt.figure(figsize = (4,8))
     ax1 = fig.add_subplot(121)
     im1 = ax1.imshow(inp_img, vmin=np.min(inp_img), vmax=np.max(inp_img), interpolation='None')

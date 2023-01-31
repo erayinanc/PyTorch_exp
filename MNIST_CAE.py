@@ -3,7 +3,7 @@
 """
 script to train a CAE model with MNIST dataset
 authors: EI
-version: 230125a
+version: 230131a
 prereq: python3.x w/ torch, torchvision, matplotlib, numpy, h5py
 notes: bases on the CNN of MNIST example: https://github.com/pytorch/examples/blob/main/mnist/main.py
 testing CAE for various extension to generative networks
@@ -441,10 +441,6 @@ def main():
         logging.info('starting the training!')
         logging.info('--------------------------------------------------------')
 
-    # printout loss and epoch
-    if not only_test:
-        outT = open('out_loss.dat','w')
-
     # start trainin loop
     et = time.perf_counter()
     tot_ep_t = 0.0
@@ -471,10 +467,6 @@ def main():
             # write out loss and epoch
             outT.write("%4d   %5.15E\n" %(epoch, loss_acc))
             outT.flush()
-
-    # close file
-    if not only_test:
-        outT.close()
 
     # finalise training
     # save final state

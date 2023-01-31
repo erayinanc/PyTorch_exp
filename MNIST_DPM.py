@@ -3,7 +3,7 @@
 """
 script to train a Diffusion Probabilistic Model (DPM) with MNIST dataset
 authors: EI
-version: 230125a
+version: 230131a
 prereq: python3.x w/ torch, torchvision, matplotlib, numpy, scipy, perlin_noise, h5py
 notes: bases on the CNN of MNIST example: https://github.com/pytorch/examples/blob/main/mnist/main.py
 testing DPM with filtering+noise w/o attention mechanism, possible extension to turbulence modelling
@@ -517,37 +517,31 @@ def main():
         logging.info('starting the training!')
         logging.info('--------------------------------------------------------')
 
-    # printout loss and epoch
-    if not only_test:
-        outT = open('out_loss.dat','w')
-
     # start trainin loop
     et = time.perf_counter()
-    tot_ep_t = 0.0
-    for epoch in range(start_epoch, args.epochs+1):
-        # training
-        loss_acc, train_t = train(model, device, train_loader, optimizer, epoch, loss_function, scheduler)
+    first_ep_t = last_ep_t = tot_ep_t = 0.0
+    with open('out_loss.dat','w',encoding="utf-8") as outT:
+        for epoch in range(start_epoch, args.epochs+1):
+            # training
+            loss_acc, train_t = train(model, device, train_loader, optimizer, epoch, loss_function, scheduler)
 
-        # save total/first/last epoch timer
-        tot_ep_t += train_t
-        if epoch == start_epoch:
-            first_ep_t = train_t
-        if epoch == args.epochs:
-            last_ep_t = train_t
+            # save total/first/last epoch timer
+            tot_ep_t += train_t
+            if epoch == 1:
+                first_ep_t = train_t
+            if epoch == args.epochs:
+                last_ep_t = train_t
 
-       # save state if found a better state
-        is_best = loss_acc < best_acc
-        if epoch % args.restart_int == 0 and not args.benchrun:
-            save_state(epoch, model, loss_acc, optimizer, res_name, is_best)
-            # reset best_acc
-            best_acc = min(loss_acc, best_acc)
+           # save state if found a better state
+            is_best = loss_acc < best_acc
+            if epoch % args.restart_int == 0 and not args.benchrun:
+                save_state(epoch, model, loss_acc, optimizer, res_name, is_best)
+                # reset best_acc
+                best_acc = min(loss_acc, best_acc)
 
-        # write out loss and epoch
-        outT.write("%4d   %5.15E\n" %(epoch, loss_acc))
-
-    # close file
-    if not only_test:
-        outT.close()
+            # write out loss and epoch
+            outT.write("%4d   %5.15E\n" %(epoch, loss_acc))
+            outT.flush()
 
     # finalise training
     # save final state

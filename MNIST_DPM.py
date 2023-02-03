@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-script to train a Diffusion Probabilistic Model (DPM) with MNIST dataset
+script to train a alternative Diffusion Probabilistic Model (DPM) with MNIST dataset
 authors: EI
-version: 230131a
+version: 230203a
 prereq: python3.x w/ torch, torchvision, matplotlib, numpy, scipy, perlin_noise, h5py
 notes: bases on the CNN of MNIST example: https://github.com/pytorch/examples/blob/main/mnist/main.py
 testing DPM with filtering+noise w/o attention mechanism, possible extension to turbulence modelling
@@ -69,6 +69,8 @@ def pars_ini():
                         help='log interval per training (default: 10)')
 
     # optimization
+    parser.add_argument('--mps', action='store_true', default=False,
+                        help='enables macOS GPU training')
     parser.add_argument('--nworker', type=int, default=0,
                         help='number of workers in DataLoader (default: 0 - only main)')
     parser.add_argument('--prefetch', type=int, default=2,
@@ -82,14 +84,10 @@ def pars_ini():
 
     args = parser.parse_args()
 
-    # set minimum of 3 epochs when benchmarking (last epoch produces logs)
-    args.epochs = 3 if args.epochs < 3 and args.benchrun else args.epochs
-
 # debug of the run
 def debug_ini(timer):
     logging.basicConfig(format='%(levelname)s: %(message)s', stream=sys.stdout, level=logging.INFO)
     logging.info('configuration:')
-    logging.info('--------------------------------------------------------')
     logging.info('sys.version: '+str(sys.version))
     logging.info('parsers list:')
     list_args = [x for x in vars(args)]
@@ -98,11 +96,19 @@ def debug_ini(timer):
 
     # add warning here!
     warning1=False
+    print(f'\n--------------------------------------------------------')
     if args.benchrun and args.epochs<3:
-        logging.warning('benchrun requires atleast 3 epochs - setting epochs to 3\n')
+        logging.warning('benchrun requires atleast 3 epochs - setting epochs to 3!')
+
+        # set minimum of 3 epochs when benchmarking (last epoch produces logs)
+        args.epochs = 3 if args.epochs < 3 and args.benchrun else args.epochs
+        warning1=True
+    if not args.mps and torch.backends.mps.is_available():
+        logging.warning('Found mps device, please run with --mps to enable mac GPU, using CPUs for now!')
         warning1=True
     if not warning1:
-        logging.warning('all OK!\n')
+        logging.warning('all OK!')
+    print(f'--------------------------------------------------------\n')
 
     return logging
 
@@ -286,9 +292,9 @@ def train(model, device, train_loader, optimizer, epoch, loss_function, schedule
 
     # TEST w/ plots
     if epoch%1==0:
-        plot_scatter_test(data[0,0,:,:].detach().numpy(), \
-                res.data_dpm[0,0,:,:].detach().numpy(), \
-                output[0,0,:,:].detach().numpy(), epoch)
+        plot_scatter_test(data[0,0,:,:].detach().cpu().numpy(), \
+                res.data_dpm[0,0,:,:].detach().cpu().numpy(), \
+                output[0,0,:,:].detach().cpu().numpy(), epoch)
 
     # lr scheduler
     if args.schedule:
@@ -366,11 +372,11 @@ def test(model, device, test_loader, loss_function):
     # test results
     logging.info('testing results:')
     logging.info('total testing time: {:.2f}'.format(time.perf_counter()-lt)+' s')
-    logging.info('test loss: '+str(test_loss.numpy()))
+    logging.info('test loss: '+str(test_loss.cpu().numpy()))
 
     # plot comparison if needed
     if not args.skipplot and not args.testrun and not args.benchrun:
-        plot_scatter(res.data_dpm[0,0,:,:].numpy(), output[0,0,:,:].numpy())
+        plot_scatter(res.data_dpm[0,0,:,:].cpu().numpy(), output[0,0,:,:].cpu().numpy())
 
 # encode export
 def encode_exp(encode, device, train_loader):
@@ -434,7 +440,7 @@ def main():
     logging = debug_ini(time.perf_counter()-st)
 
     # set device to CPU
-    device = torch.device('cpu')
+    device = torch.device('mps' if args.mps and torch.backends.mps.is_available() else 'cpu')
 
     # define train/test data
     data_dir = args.data_dir
@@ -515,7 +521,7 @@ def main():
         logging.warning('only testing will be performed -- skipping training!\n')
     else:
         logging.info('starting the training!')
-        logging.info('--------------------------------------------------------')
+        print(f'--------------------------------------------------------')
 
     # start trainin loop
     et = time.perf_counter()
